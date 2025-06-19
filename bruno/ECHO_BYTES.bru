@@ -1,0 +1,15 @@
+meta {
+  name: ECHO_BYTES
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{CF_HOST}}/echo-bytes
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {"first_name":"Daniel","last_name":"Santana"}
+}

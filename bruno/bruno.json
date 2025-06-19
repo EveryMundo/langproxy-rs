@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "CF_Rust_Worker",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

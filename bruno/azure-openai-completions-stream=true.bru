@@ -1,0 +1,44 @@
+meta {
+  name: /azure-openai/completions?stream=true
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{CF_HOST}}/azure-openai/completions?u=https%3A%2F%2Foffer-mkt-azure-open-ai.openai.azure.com%2Fopenai%2Fdeployments%2Fgpt-4o-mini-ofmkt-langflow%2Fchat%2Fcompletions%3Fapi-version%3D2025-02-01-preview&app=rustTestLocal
+  body: json
+  auth: none
+}
+
+params:query {
+  u: https%3A%2F%2Foffer-mkt-azure-open-ai.openai.azure.com%2Fopenai%2Fdeployments%2Fgpt-4o-mini-ofmkt-langflow%2Fchat%2Fcompletions%3Fapi-version%3D2025-02-01-preview
+  app: rustTestLocal
+}
+
+headers {
+  api-key: {{AZR_OPENAI_KEY}}
+}
+
+body:json {
+  {
+    "messages": [
+      {
+        "content": "What is the most performatic programming language with memory safety built in?",
+        "role": "user"
+      }
+    ],
+    "model": "gpt-4o",
+    "n": 1,
+    "stream": true,
+    "temperature": 0
+  }
+}
+
+tests {
+  // require('url')
+  const cwd = bru.cwd()
+  
+  console.log(`${cwd}`)
+  
+  for (const prop in globalThis) console.log({prop})
+}
