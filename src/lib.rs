@@ -82,7 +82,7 @@ async fn stream_proxy (mut req: Request, _ctx: RouteContext<()>) -> Result <Resp
                 Ok(v) => Ok(v.with_status(400)),
                 Err(e) => {
                     console_error!("Response Builder Error: {}", e.to_string());
-                    Response::error("Internal Server Error", 500)
+                    Response::error("Internal Server Error!", 500)
                 }
             };
         }
@@ -90,15 +90,48 @@ async fn stream_proxy (mut req: Request, _ctx: RouteContext<()>) -> Result <Resp
 
     console_debug!("XParams: {xparams:?}");
 
-    let stream_params: AzureReqBodyStream = match serde_json::from_slice(&data) {
-        Ok(v) => v,
+    // let a = std::time::Instant::now();
+    let data = match serde_json::from_slice::<AzureReqBodyStream>(&data) {
+        Ok(stream_params) => {
+            console_debug!("Stream Params: {stream_params:?}");
+            if stream_params.stream == false { data }
+            else {
+                match std::str::from_utf8(&data) {
+                    Ok(s) => {
+                        #[cfg(debug_assertions)]
+                        console_error!("ORIGINAL: {}", s);
+                        // https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#chatcompletionstreamoptions
+                        // {"stream_options":{"include_usage": true}
+                        // let trimmed = s.trim();
+                        // let concat = format!("{}{}", &trimmed[..(trimmed.len() - 1)], r#","stream_options":{"include_usage": true}}"#);
+                        let concat = format!("{}{}", r#"{"stream_options":{"include_usage": true},"#, &s.trim()[1..]);
+                        #[cfg(debug_assertions)]
+                        console_error!("CONCAT: {concat}");
+                        // #[cfg(debug_assertions)]
+                        match serde_json::from_str::<serde_json::Value>(&concat) {
+                            Ok(_) => { console_log!("Parsed Ok!"); }
+                            Err(e) => {
+                                console_error!("Invalid JSON: {}", e);
+
+                                return Response::error("Invalid UTF-8", 400);
+                            }
+                        }
+                        // console_log!("=== Took {:?}", a.elapsed());
+                        concat
+                    }
+                    Err(e) => {
+                        console_error!("Invalid UTF-8: {}", e);
+                        return Response::error("Invalid UTF-8", 400);
+                    }
+                }.as_str().into()
+            }
+        },
         Err(e) => {
             console_error!("JSON Error: {}", e.to_string());
-            return Response::error("Internal Server Error", 500);
+            return Response::error("Internal Server Error!!", 500);
         }
     };
     
-    console_debug!("Stream Params: {stream_params:?}");
     
     static API_KEY_STR: &str = "api-key";
     static AUTH_KEY_STR: &str = "authorization";
@@ -111,7 +144,7 @@ async fn stream_proxy (mut req: Request, _ctx: RouteContext<()>) -> Result <Resp
             Ok(Some(key)) => (AUTH_KEY_STR, key),
             _ => {
                 console_error!("Request Error: Missing authorization headers");
-                return Response::error("Internal Server Error!!", 500);
+                return Response::error("Internal Server Error!!!", 500);
             },
         }
     };
@@ -132,7 +165,7 @@ async fn stream_proxy (mut req: Request, _ctx: RouteContext<()>) -> Result <Resp
             Ok(res) => res,
             Err(e) => {
                 console_error!("Request Error: {}", e.to_string());
-                return Response::error("Internal Server Error", 500);
+                return Response::error("Internal Server Error!!!!", 500);
             }
         };
 
@@ -195,7 +228,7 @@ async fn stream_proxy (mut req: Request, _ctx: RouteContext<()>) -> Result <Resp
             Ok(resp) => Ok(resp.with_headers(my_response_headers)),
             Err(e) => {
                 console_error!("Error creating streaming response: {}", e);
-                Response::error("Internal Server Error", 500)
+                Response::error("Internal Server Error!!!!!", 500)
             }
         }
     } else {
