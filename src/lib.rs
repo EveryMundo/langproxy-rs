@@ -119,7 +119,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
             console_debug!("Proxy URL: {proxy_url}");
 
             let reqwester = reqwest::Client::new();
-            let mut response = match reqwester.post(proxy_url)
+            let response = match reqwester.post(proxy_url)
                 .headers(proxy_headers.into())
                 .body(data)
                 .send()
@@ -159,31 +159,64 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 let mut my_response_headers = Headers::new();
 
                 for (header_name, header_value) in response.headers() {
-                    my_response_headers.append(header_name.as_str(), header_value.to_str().unwrap())
-                        .expect("Should set response header");
+                    if let Ok(value_str) = header_value.to_str() {
+                        my_response_headers.append(header_name.as_str(), value_str)
+                            .expect("Should set response header");
+                    }
                 }
 
+                // Set content type to match what's expected for streaming responses
+                if !my_response_headers.has("content-type").unwrap_or(false) {
+                    my_response_headers.set("content-type", "text/event-stream")
+                        .expect("Should set content-type header");
+                }
+                
+                // Add CORS headers if needed
+                my_response_headers.set("Access-Control-Allow-Origin", "*")
+                    .expect("Should set CORS header");
+                
+                // Create a streaming response
                 let status = response.status().as_u16();
-                let mut stream = response.bytes_stream();
-
-                while let Some(item) = stream.next().await {
-                    match item {
-                        Ok(chunk) => {
-                            // Process the chunk of bytes
-                            // For example, print it or write it to a file
-                            console_log!("Received chunk: {:?}\n\n", chunk);
-                        }
-                        Err(e) => {
-                            console_error!("Error while streaming: {}", e);
-                            // Handle the error, maybe break the loop or retry
-                            break;
+                let (mut tx, rx) = futures_channel::mpsc::channel(10);
+                
+                // Spawn a task to process the incoming stream and send chunks to our channel
+                wasm_bindgen_futures::spawn_local(async move {
+                    let mut stream = response.bytes_stream();
+                    
+                    while let Some(item) = stream.next().await {
+                        match item {
+                            Ok(chunk) => {
+                                // console_log!("Forwarding chunk of size: {}", chunk.len());
+                                if tx.try_send(Ok(chunk.to_vec())).is_err() {
+                                    console_error!("Failed to forward chunk, receiver dropped");
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                console_error!("Error while streaming: {}", e);
+                                let _ = tx.try_send(Err(Error::from(e.to_string())));
+                                break;
+                            }
                         }
                     }
-                };
-
-                console_log!("Done {}", status);
+                    
+                    console_log!("Upstream stream completed with status {}", status);
+                });
                 
-                Response::from_bytes(b"Internal Server Error!!!".into())
+                // Create a ReadableStream from our channel receiver
+                let stream = rx.map(|result| match result {
+                    Ok(bytes) => Ok(bytes),
+                    Err(e) => Err(Error::from(e.to_string())),
+                });
+                
+                // Return a streaming response
+                match Response::from_stream(stream) {
+                    Ok(resp) => Ok(resp.with_headers(my_response_headers)),
+                    Err(e) => {
+                        console_error!("Error creating streaming response: {}", e);
+                        Response::error("Internal Server Error", 500)
+                    }
+                }
             } else {
                 console_error!("Error {}", response.status());
                 Response::error("Internal Server Error!!!", response.status().into())
