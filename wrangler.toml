@@ -1,0 +1,22 @@
+name = "langproxy-rs"
+main = "build/worker/shim.mjs"
+compatibility_date = "2025-06-16"
+
+[build]
+# command = "cargo install -q worker-build && worker-build --release"
+command = "worker-build --release"
+
+[observability]
+enabled = true
+
+[env.dev]
+workers_dev = true
+
+routes = [
+	{ pattern = "oxyproxy.everymundo.net", custom_domain = true },
+	{ pattern = "oxypros.everymundo.net/*", zone_id = "989956d06b282cd5261a7b8c91ca87e8" },
+]
+
+analytics_engine_datasets = [
+  { binding = "OPENAI_PROXY_USAGE_ANALYTICS", dataset = "openai-oxy-usage-analytics-dev" }
+]
