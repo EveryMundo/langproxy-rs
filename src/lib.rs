@@ -188,19 +188,19 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
             my_response_headers.set("content-type", "text/event-stream")
                 .expect("Should set content-type header");
         }
-        
+
         // Add CORS headers if needed
         my_response_headers.set("Access-Control-Allow-Origin", "*")
             .expect("Should set CORS header");
-        
+
         // Create a streaming response
         let status = response.status().as_u16();
         let (mut tx, rx) = futures_channel::mpsc::channel(10);
-        
+
         // Spawn a task to process the incoming stream and send chunks to our channel
         wasm_bindgen_futures::spawn_local(async move {
             let mut stream = response.bytes_stream();
-            
+
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(chunk) => {
@@ -209,6 +209,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                             console_error!("Failed to forward chunk, receiver dropped");
                             break;
                         }
+                        // worker::Delay::from(std::time::Duration::from_millis(100)).await;
                     }
                     Err(e) => {
                         console_error!("Error while streaming: {}", e);
@@ -217,16 +218,69 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                     }
                 }
             }
-            
+
             console_log!("Upstream stream completed with status {}", status);
         });
-        
+
+        // let mut temp_str: heapless::String<512> = heapless::String::new();
+        let mut temp_str = String::new();
+        // let env = ctx.env;
         // Create a ReadableStream from our channel receiver
-        let stream = rx.map(|result| match result {
-            Ok(bytes) => Ok(bytes),
+        let stream = rx.map(move |result| {
+            match result {
+                Ok(bytes) => {
+                    let chunk_str = unsafe{ std::str::from_utf8_unchecked(&bytes) };
+                    if temp_str.len() > 0 {
+                        console_log!("TEMP STRING LEN: {}", temp_str.len());
+                        if let Some(pos) = chunk_str.find("\n") {
+                            temp_str.push_str(&chunk_str[..pos])
+                                //.expect("Failed to second push chunk")
+                                ;
+                        let choices_str = &temp_str;
+                        console_debug!("TEMP STRING2: <!--\n{}\n-->", choices_str);
+
+                        match serde_json::from_str::<StatsChunk>(choices_str) {
+                            Ok(stats_chunk) => {
+                                console_log!("STATS CHUNK A: <!--\n{:?}\n-->", stats_chunk);
+                            }
+                            Err(e) => {
+                                console_error!("B: Failed to parse choices chunk: <!--\n{choices_str}\n-->\nError: {e}");
+                            }
+                        }
+                        temp_str.clear();
+                    }
+                }
+
+                if let Some(choices_position) = chunk_str.find(r#"{"choices":[]"#) {
+                    console_debug!("CHOICES CHUNK: <!--\n{}\n-->", &chunk_str[choices_position..]);
+                    if let Some(newline_position) = chunk_str.find("\n") {
+                        let choices_str = &chunk_str[choices_position..newline_position];
+                        console_debug!("CHOICES STRING: <!--\n{}\n-->", choices_str);
+                        match serde_json::from_str::<StatsChunk>(choices_str) {
+                            Ok(stats_chunk) => {
+                                console_log!("STATS CHUNK B: <!--\n{:?}\n-->", stats_chunk);
+                            }
+                            Err(e) => {
+                                console_error!("A: Failed to parse choices chunk:\nError: {:?}", e);
+                            }
+                        }
+                    } else {
+                        console_debug!(": CHOICES ELSE: NO ENTER IN STRING");
+                        temp_str.clear();
+                        temp_str.push_str(&chunk_str[choices_position..])
+                            // .expect("Failed to push first chunk")
+                            ;
+                        console_debug!("TEMP STRING1: ----\n{}\n----", temp_str);
+                    }
+                    console_log!("CHUNK: ----\n{}\n----", chunk_str);
+                }
+                // console_log!("CHUNK: ----\n{}\n----", unsafe{ std::str::from_utf8_unchecked(&bytes) });
+                Ok(bytes)
+            },
             Err(e) => Err(Error::from(e.to_string())),
-        });
-        
+        }
+    });
+
         // Return a streaming response
         match Response::from_stream(stream) {
             Ok(resp) => Ok(resp.with_headers(my_response_headers)),
@@ -264,6 +318,11 @@ struct AzureReqBodyStream {
 }
 
 #[derive(Debug, Deserialize)]
+struct StatsChunk {
+    pub model: HString<64>,
+    pub usage: Usage,
+}
+#[derive(Debug, Deserialize)]
 struct Usage {
     #[serde(default)]
     pub completion_tokens: u32,
@@ -278,4 +337,3 @@ struct AzurePartialResponseBody {
     pub model: HString<64>,
     pub usage: Usage,
 }
-    
