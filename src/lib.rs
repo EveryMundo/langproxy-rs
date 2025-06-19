@@ -66,9 +66,9 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         .run(req, env).await
 }
 
-async fn stream_proxy (mut req: Request, _ctx: RouteContext<()>) -> Result <Response> {
+async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Response> {
     let data = req.bytes().await?;
-    
+
     let xparams: ProxyUrlParams = match req.query() {
         Ok(v) => v,
         Err(e) => {
@@ -131,29 +131,33 @@ async fn stream_proxy (mut req: Request, _ctx: RouteContext<()>) -> Result <Resp
             return Response::error("Internal Server Error!!", 500);
         }
     };
-    
-    
-    static API_KEY_STR: &str = "api-key";
-    static AUTH_KEY_STR: &str = "authorization";
-    
-    let mut proxy_headers = Headers::new();
-    
-    let (header_name, header_value) = match req.headers().get(API_KEY_STR) {
-        Ok(Some(key)) => (API_KEY_STR, key),
-        _ => match req.headers().get(AUTH_KEY_STR) {
-            Ok(Some(key)) => (AUTH_KEY_STR, key),
-            _ => {
-                console_error!("Request Error: Missing authorization headers");
-                return Response::error("Internal Server Error!!!", 500);
-            },
-        }
+
+
+    let proxy_headers = {
+        static API_KEY_STR: &str = "api-key";
+        static AUTH_KEY_STR: &str = "authorization";
+
+        let mut proxy_headers = Headers::new();
+
+        let (header_name, header_value) = match req.headers().get(API_KEY_STR) {
+            Ok(Some(key)) => (API_KEY_STR, key),
+            _ => match req.headers().get(AUTH_KEY_STR) {
+                Ok(Some(key)) => (AUTH_KEY_STR, key),
+                _ => {
+                    console_error!("Request Error: Missing authorization headers");
+                    return Response::error("Internal Server Error!!!", 500);
+                },
+            }
+        };
+
+        proxy_headers.set(header_name, &header_value)
+            .expect("Should set a header value");
+
+        proxy_headers
     };
 
-    proxy_headers.set(header_name, &header_value)
-        .expect("Should set a header value");
-    
     let proxy_url = xparams.u.clone();
-    
+
     console_debug!("Proxy URL: {proxy_url}");
 
     let reqwester = reqwest::Client::new();
