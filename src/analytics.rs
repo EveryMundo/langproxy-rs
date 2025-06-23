@@ -125,7 +125,13 @@ impl UsageAnalytics {
         // CloudFlare Analytics Engine expects structured data with blobs, doubles, and indexes
         let data_point = serde_json::json!({
             "blobs": [
-                serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+                self.tenant_id.as_deref().unwrap_or("unknown"),
+                self.module_id.as_deref().unwrap_or("unknown"),
+                self.session_id.as_deref().unwrap_or("unknown"),
+                self.request_id.as_deref().unwrap_or("unknown"),
+                self.ip_address.as_deref().unwrap_or("unknown"),
+                self.country.as_deref().unwrap_or("unknown"),
+                &self.model,
             ],
             "doubles": [
                 self.timestamp,
@@ -134,13 +140,10 @@ impl UsageAnalytics {
                 self.total_tokens as f64,
             ],
             "indexes": [
-                self.tenant_id.as_deref().unwrap_or("unknown"),
-                self.module_id.as_deref().unwrap_or("unknown"),
-                self.session_id.as_deref().unwrap_or("unknown"),
-                self.request_id.as_deref().unwrap_or("unknown"),
-                self.ip_address.as_deref().unwrap_or("unknown"),
-                self.country.as_deref().unwrap_or("unknown"),
-                &self.model,
+                format!("{}_{}", 
+                    self.tenant_id.as_deref().unwrap_or("unknown"),
+                    self.module_id.as_deref().unwrap_or("unknown")
+                )
             ]
         });
         
