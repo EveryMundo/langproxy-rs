@@ -75,6 +75,10 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
     // Extract metadata for analytics
     let ip_address = req.headers().get("CF-Connecting-IP").ok().flatten();
     let country = req.headers().get("CF-IPCountry").ok().flatten();
+    let cf_ray = req.headers().get("CF-Ray").ok().flatten();
+    let domain = req.headers().get("Host").ok().flatten();
+    // For deployment, we could use environment variables or default value
+    let deployment = Some("cloudflare-worker".to_string());
     let env = ctx.env.clone();
 
     let xparams: ProxyUrlParams = match req.query() {
@@ -240,8 +244,12 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
             xparams.mod_id.clone(), 
             xparams.ses_id.clone(),
             xparams.req_id.clone(),
+            xparams.env_id.clone(),
             ip_address.clone(),
             country.clone(),
+            cf_ray.clone(),
+            domain.clone(),
+            deployment.clone(),
             env.clone(),
         );
         
@@ -270,8 +278,12 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                     analytics_metadata.2.clone(), // module_id  
                                     analytics_metadata.3.clone(), // session_id
                                     analytics_metadata.4.clone(), // request_id
-                                    analytics_metadata.5.clone(), // ip_address
-                                    analytics_metadata.6.clone(), // country
+                                    analytics_metadata.5.clone(), // env_id
+                                    analytics_metadata.6.clone(), // ip_address
+                                    analytics_metadata.7.clone(), // country
+                                    analytics_metadata.8.clone(), // cf_ray
+                                    analytics_metadata.9.clone(), // domain
+                                    analytics_metadata.10.clone(), // deployment
                                     stats_chunk.model.to_string(),
                                     stats_chunk.usage.prompt_tokens,
                                     stats_chunk.usage.completion_tokens,
@@ -279,7 +291,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                 );
                                 
                                 // Save analytics data asynchronously (fire-and-forget)
-                                let env_clone = analytics_metadata.7.clone();
+                                let env_clone = analytics_metadata.11.clone();
                                 wasm_bindgen_futures::spawn_local(async move {
                                     analytics.save(&env_clone).await;
                                 });
@@ -308,8 +320,12 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                     analytics_metadata.2.clone(), // module_id  
                                     analytics_metadata.3.clone(), // session_id
                                     analytics_metadata.4.clone(), // request_id
-                                    analytics_metadata.5.clone(), // ip_address
-                                    analytics_metadata.6.clone(), // country
+                                    analytics_metadata.5.clone(), // env_id
+                                    analytics_metadata.6.clone(), // ip_address
+                                    analytics_metadata.7.clone(), // country
+                                    analytics_metadata.8.clone(), // cf_ray
+                                    analytics_metadata.9.clone(), // domain
+                                    analytics_metadata.10.clone(), // deployment
                                     stats_chunk.model.to_string(),
                                     stats_chunk.usage.prompt_tokens,
                                     stats_chunk.usage.completion_tokens,
@@ -317,7 +333,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                 );
                                 
                                 // Save analytics data asynchronously (fire-and-forget)
-                                let env_clone = analytics_metadata.7.clone();
+                                let env_clone = analytics_metadata.11.clone();
                                 wasm_bindgen_futures::spawn_local(async move {
                                     analytics.save(&env_clone).await;
                                 });

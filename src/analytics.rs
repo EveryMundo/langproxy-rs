@@ -14,10 +14,18 @@ pub struct UsageAnalytics {
     pub session_id: Option<String>,
     /// Request identifier from request parameters
     pub request_id: Option<String>,
+    /// Environment identifier from request parameters
+    pub env_id: Option<String>,
     /// Client IP address
     pub ip_address: Option<String>,
     /// Country code from CloudFlare headers
     pub country: Option<String>,
+    /// CloudFlare Ray ID
+    pub cf_ray: Option<String>,
+    /// Domain from request
+    pub domain: Option<String>,
+    /// Deployment identifier
+    pub deployment: Option<String>,
     /// Model name used for the completion
     pub model: String,
     /// Number of prompt tokens used
@@ -38,8 +46,12 @@ impl UsageAnalytics {
         module_id: Option<String>, 
         session_id: Option<String>,
         request_id: Option<String>,
+        env_id: Option<String>,
         ip_address: Option<String>,
         country: Option<String>,
+        cf_ray: Option<String>,
+        domain: Option<String>,
+        deployment: Option<String>,
         model: String,
         prompt_tokens: u32,
         completion_tokens: u32,
@@ -51,8 +63,12 @@ impl UsageAnalytics {
             module_id,
             session_id,
             request_id,
+            env_id,
             ip_address,
             country,
+            cf_ray,
+            domain,
+            deployment,
             model,
             prompt_tokens,
             completion_tokens,
@@ -82,8 +98,12 @@ impl UsageAnalytics {
         module_id: Option<String>, 
         session_id: Option<String>,
         request_id: Option<String>,
+        env_id: Option<String>,
         ip_address: Option<String>,
         country: Option<String>,
+        cf_ray: Option<String>,
+        domain: Option<String>,
+        deployment: Option<String>,
         model: String,
         prompt_tokens: u32,
         completion_tokens: u32,
@@ -96,8 +116,12 @@ impl UsageAnalytics {
             module_id,
             session_id,
             request_id,
+            env_id,
             ip_address,
             country,
+            cf_ray,
+            domain,
+            deployment,
             model,
             prompt_tokens,
             completion_tokens,
@@ -114,14 +138,18 @@ impl UsageAnalytics {
     pub async fn save(&self, env: &Env) {
         // Log the analytics data for monitoring
         console_log!(
-            "Analytics Event: app={}, tenant={:?}, module={:?}, session={:?}, request={:?}, ip={:?}, country={:?}, model={}, prompt_tokens={}, completion_tokens={}, total_tokens={}", 
+            "Analytics Event: app={}, tenant={:?}, module={:?}, session={:?}, request={:?}, env={:?}, ip={:?}, country={:?}, cf_ray={:?}, domain={:?}, deployment={:?}, model={}, prompt_tokens={}, completion_tokens={}, total_tokens={}", 
             self.app_id,
             self.tenant_id,
             self.module_id,
             self.session_id,
             self.request_id,
+            self.env_id,
             self.ip_address,
             self.country,
+            self.cf_ray,
+            self.domain,
+            self.deployment,
             self.model,
             self.prompt_tokens,
             self.completion_tokens,
@@ -130,22 +158,26 @@ impl UsageAnalytics {
         
         // Prepare data for Analytics Engine
         // CloudFlare Analytics Engine expects structured data with blobs, doubles, and indexes
+        // Following the original JavaScript implementation order
         let data_point = serde_json::json!({
             "blobs": [
-                &self.app_id,
-                self.tenant_id.as_deref().unwrap_or("unknown"),
-                self.module_id.as_deref().unwrap_or("unknown"),
-                self.session_id.as_deref().unwrap_or("unknown"),
-                self.request_id.as_deref().unwrap_or("unknown"),
-                self.ip_address.as_deref().unwrap_or("unknown"),
-                self.country.as_deref().unwrap_or("unknown"),
-                &self.model,
+                self.ip_address.as_deref().unwrap_or("unknown"),       // ipAddr
+                self.country.as_deref().unwrap_or("unknown"),          // country
+                self.cf_ray.as_deref().unwrap_or("unknown"),           // cfRay
+                self.domain.as_deref().unwrap_or("unknown"),           // domain
+                self.deployment.as_deref().unwrap_or("unknown"),       // deployment
+                self.tenant_id.as_deref().unwrap_or("unknown"),        // tenId
+                self.module_id.as_deref().unwrap_or("unknown"),        // modId
+                self.session_id.as_deref().unwrap_or("unknown"),       // sesId
+                self.request_id.as_deref().unwrap_or("unknown"),       // reqId
+                self.env_id.as_deref().unwrap_or("unknown"),           // envId
+                &self.model,                                           // model
             ],
             "doubles": [
-                self.timestamp,
-                self.prompt_tokens as f64,
-                self.completion_tokens as f64,
-                self.total_tokens as f64,
+                self.prompt_tokens as f64,     // prompt_tokens
+                self.completion_tokens as f64, // completion_tokens
+                self.total_tokens as f64,      // total_tokens
+                1.0,                          // stream (1.0 for streaming requests)
             ],
             "indexes": [
                 format!("{}:{}", self.tenant_id.as_deref().unwrap_or("unknown"), &self.app_id)
@@ -188,8 +220,12 @@ mod tests {
             Some("module456".to_string()),
             Some("session789".to_string()),
             Some("request101".to_string()),
+            Some("env567".to_string()),
             Some("192.168.1.1".to_string()),
             Some("US".to_string()),
+            Some("ray123".to_string()),
+            Some("example.com".to_string()),
+            Some("prod".to_string()),
             "gpt-4".to_string(),
             100, // prompt_tokens
             50,  // completion_tokens
@@ -202,8 +238,12 @@ mod tests {
         assert_eq!(analytics.module_id, Some("module456".to_string()));
         assert_eq!(analytics.session_id, Some("session789".to_string()));
         assert_eq!(analytics.request_id, Some("request101".to_string()));
+        assert_eq!(analytics.env_id, Some("env567".to_string()));
         assert_eq!(analytics.ip_address, Some("192.168.1.1".to_string()));
         assert_eq!(analytics.country, Some("US".to_string()));
+        assert_eq!(analytics.cf_ray, Some("ray123".to_string()));
+        assert_eq!(analytics.domain, Some("example.com".to_string()));
+        assert_eq!(analytics.deployment, Some("prod".to_string()));
         assert_eq!(analytics.model, "gpt-4");
         assert_eq!(analytics.prompt_tokens, 100);
         assert_eq!(analytics.completion_tokens, 50);
@@ -216,6 +256,10 @@ mod tests {
         let analytics = UsageAnalytics::new_with_timestamp(
             "test_app".to_string(),
             Some("test_tenant".to_string()),
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -251,6 +295,10 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
             "empty-test".to_string(),
             0,
             0,
@@ -263,8 +311,12 @@ mod tests {
         assert_eq!(analytics.module_id, None);
         assert_eq!(analytics.session_id, None);
         assert_eq!(analytics.request_id, None);
+        assert_eq!(analytics.env_id, None);
         assert_eq!(analytics.ip_address, None);
         assert_eq!(analytics.country, None);
+        assert_eq!(analytics.cf_ray, None);
+        assert_eq!(analytics.domain, None);
+        assert_eq!(analytics.deployment, None);
         assert_eq!(analytics.model, "empty-test");
         assert_eq!(analytics.prompt_tokens, 0);
         assert_eq!(analytics.completion_tokens, 0);
