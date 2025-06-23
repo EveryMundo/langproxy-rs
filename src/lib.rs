@@ -235,6 +235,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
         
         // Capture analytics metadata for use in the stream closure
         let analytics_metadata = (
+            xparams.app.clone(),
             xparams.ten_id.clone(),
             xparams.mod_id.clone(), 
             xparams.ses_id.clone(),
@@ -264,12 +265,13 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                 
                                 // Collect analytics data
                                 let analytics = UsageAnalytics::new(
-                                    analytics_metadata.0.clone(), // tenant_id
-                                    analytics_metadata.1.clone(), // module_id  
-                                    analytics_metadata.2.clone(), // session_id
-                                    analytics_metadata.3.clone(), // request_id
-                                    analytics_metadata.4.clone(), // ip_address
-                                    analytics_metadata.5.clone(), // country
+                                    analytics_metadata.0.clone(), // app_id
+                                    analytics_metadata.1.clone(), // tenant_id
+                                    analytics_metadata.2.clone(), // module_id  
+                                    analytics_metadata.3.clone(), // session_id
+                                    analytics_metadata.4.clone(), // request_id
+                                    analytics_metadata.5.clone(), // ip_address
+                                    analytics_metadata.6.clone(), // country
                                     stats_chunk.model.to_string(),
                                     stats_chunk.usage.prompt_tokens,
                                     stats_chunk.usage.completion_tokens,
@@ -277,7 +279,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                 );
                                 
                                 // Save analytics data asynchronously (fire-and-forget)
-                                let env_clone = analytics_metadata.6.clone();
+                                let env_clone = analytics_metadata.7.clone();
                                 wasm_bindgen_futures::spawn_local(async move {
                                     analytics.save(&env_clone).await;
                                 });
@@ -301,12 +303,13 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                 
                                 // Collect analytics data
                                 let analytics = UsageAnalytics::new(
-                                    analytics_metadata.0.clone(), // tenant_id
-                                    analytics_metadata.1.clone(), // module_id  
-                                    analytics_metadata.2.clone(), // session_id
-                                    analytics_metadata.3.clone(), // request_id
-                                    analytics_metadata.4.clone(), // ip_address
-                                    analytics_metadata.5.clone(), // country
+                                    analytics_metadata.0.clone(), // app_id
+                                    analytics_metadata.1.clone(), // tenant_id
+                                    analytics_metadata.2.clone(), // module_id  
+                                    analytics_metadata.3.clone(), // session_id
+                                    analytics_metadata.4.clone(), // request_id
+                                    analytics_metadata.5.clone(), // ip_address
+                                    analytics_metadata.6.clone(), // country
                                     stats_chunk.model.to_string(),
                                     stats_chunk.usage.prompt_tokens,
                                     stats_chunk.usage.completion_tokens,
@@ -314,7 +317,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                                 );
                                 
                                 // Save analytics data asynchronously (fire-and-forget)
-                                let env_clone = analytics_metadata.6.clone();
+                                let env_clone = analytics_metadata.7.clone();
                                 wasm_bindgen_futures::spawn_local(async move {
                                     analytics.save(&env_clone).await;
                                 });

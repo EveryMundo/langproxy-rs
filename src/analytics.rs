@@ -4,6 +4,8 @@ use worker::*;
 /// Analytics data structure for tracking OpenAI proxy usage
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UsageAnalytics {
+    /// Application identifier from request parameters
+    pub app_id: String,
     /// Tenant identifier from request parameters
     pub tenant_id: Option<String>,
     /// Module identifier from request parameters  
@@ -31,6 +33,7 @@ pub struct UsageAnalytics {
 impl UsageAnalytics {
     /// Creates a new UsageAnalytics instance
     pub fn new(
+        app_id: String,
         tenant_id: Option<String>,
         module_id: Option<String>, 
         session_id: Option<String>,
@@ -43,6 +46,7 @@ impl UsageAnalytics {
         total_tokens: u32,
     ) -> Self {
         Self {
+            app_id,
             tenant_id,
             module_id,
             session_id,
@@ -73,6 +77,7 @@ impl UsageAnalytics {
     #[cfg(test)]
     /// Creates a UsageAnalytics instance with a specific timestamp for testing
     pub fn new_with_timestamp(
+        app_id: String,
         tenant_id: Option<String>,
         module_id: Option<String>, 
         session_id: Option<String>,
@@ -86,6 +91,7 @@ impl UsageAnalytics {
         timestamp: f64,
     ) -> Self {
         Self {
+            app_id,
             tenant_id,
             module_id,
             session_id,
@@ -108,7 +114,8 @@ impl UsageAnalytics {
     pub async fn save(&self, env: &Env) {
         // Log the analytics data for monitoring
         console_log!(
-            "Analytics Event: tenant={:?}, module={:?}, session={:?}, request={:?}, ip={:?}, country={:?}, model={}, prompt_tokens={}, completion_tokens={}, total_tokens={}", 
+            "Analytics Event: app={}, tenant={:?}, module={:?}, session={:?}, request={:?}, ip={:?}, country={:?}, model={}, prompt_tokens={}, completion_tokens={}, total_tokens={}", 
+            self.app_id,
             self.tenant_id,
             self.module_id,
             self.session_id,
@@ -125,6 +132,7 @@ impl UsageAnalytics {
         // CloudFlare Analytics Engine expects structured data with blobs, doubles, and indexes
         let data_point = serde_json::json!({
             "blobs": [
+                &self.app_id,
                 self.tenant_id.as_deref().unwrap_or("unknown"),
                 self.module_id.as_deref().unwrap_or("unknown"),
                 self.session_id.as_deref().unwrap_or("unknown"),
@@ -178,6 +186,7 @@ mod tests {
     #[test]
     fn test_usage_analytics_creation() {
         let analytics = UsageAnalytics::new_with_timestamp(
+            "app123".to_string(),
             Some("tenant123".to_string()),
             Some("module456".to_string()),
             Some("session789".to_string()),
@@ -191,6 +200,7 @@ mod tests {
             1640995200000.0, // Fixed timestamp
         );
 
+        assert_eq!(analytics.app_id, "app123");
         assert_eq!(analytics.tenant_id, Some("tenant123".to_string()));
         assert_eq!(analytics.module_id, Some("module456".to_string()));
         assert_eq!(analytics.session_id, Some("session789".to_string()));
@@ -207,6 +217,7 @@ mod tests {
     #[test]
     fn test_usage_analytics_serialization() {
         let analytics = UsageAnalytics::new_with_timestamp(
+            "test_app".to_string(),
             Some("test_tenant".to_string()),
             None,
             None,
@@ -224,6 +235,7 @@ mod tests {
         assert!(serialized.is_ok());
         
         let json_str = serialized.unwrap();
+        assert!(json_str.contains("test_app"));
         assert!(json_str.contains("test_tenant"));
         assert!(json_str.contains("test-model"));
         assert!(json_str.contains("10"));
@@ -235,6 +247,7 @@ mod tests {
     #[test]
     fn test_usage_analytics_with_none_values() {
         let analytics = UsageAnalytics::new_with_timestamp(
+            "empty-app".to_string(),
             None,
             None,
             None,
@@ -248,6 +261,7 @@ mod tests {
             1640995200000.0, // Fixed timestamp
         );
 
+        assert_eq!(analytics.app_id, "empty-app");
         assert_eq!(analytics.tenant_id, None);
         assert_eq!(analytics.module_id, None);
         assert_eq!(analytics.session_id, None);
