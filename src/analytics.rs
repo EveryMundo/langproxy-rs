@@ -148,7 +148,8 @@ impl UsageAnalytics {
                 self.total_tokens as f64,
             ],
             "indexes": [
-                format!("{}_{}", 
+                format!("{}_{}_{}", 
+                    &self.app_id,
                     self.tenant_id.as_deref().unwrap_or("unknown"),
                     self.module_id.as_deref().unwrap_or("unknown")
                 )
