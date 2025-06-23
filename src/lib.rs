@@ -1,3 +1,6 @@
+// Copyright (c) 2025 EveryMundo
+// All rights reserved.
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 // use hashbrown::HashMap;

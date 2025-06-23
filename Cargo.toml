@@ -1,3 +1,6 @@
+# Copyright (c) 2025 EveryMundo
+# All rights reserved.
+
 [package]
 name = "cf-worker-axum-101"
 version = "0.1.0"
