@@ -1,3 +1,6 @@
+<!-- Copyright (c) 2025 EveryMundo -->
+<!-- All rights reserved. -->
+
 # Rust CloudFlare Workers Performance Best Practices
 
 ## Project Context
