@@ -6,6 +6,9 @@ use futures_util::StreamExt;
 
 use worker::*;
 
+mod analytics;
+use analytics::UsageAnalytics;
+
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
 
@@ -68,6 +71,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
 async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Response> {
     let data = req.bytes().await?;
+
+    // Extract metadata for analytics
+    let ip_address = req.headers().get("CF-Connecting-IP").ok().flatten();
+    let country = req.headers().get("CF-IPCountry").ok().flatten();
+    let env = ctx.env.clone();
 
     let xparams: ProxyUrlParams = match req.query() {
         Ok(v) => v,
@@ -224,7 +232,18 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
 
         // let mut temp_str: heapless::String<512> = heapless::String::new();
         let mut temp_str = String::new();
-        // let env = ctx.env;
+        
+        // Capture analytics metadata for use in the stream closure
+        let analytics_metadata = (
+            xparams.ten_id.clone(),
+            xparams.mod_id.clone(), 
+            xparams.ses_id.clone(),
+            xparams.req_id.clone(),
+            ip_address.clone(),
+            country.clone(),
+            env.clone(),
+        );
+        
         // Create a ReadableStream from our channel receiver
         let stream = rx.map(move |result| {
             match result {
@@ -242,6 +261,26 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                         match serde_json::from_str::<StatsChunk>(choices_str) {
                             Ok(stats_chunk) => {
                                 console_log!("STATS CHUNK A: <!--\n{:?}\n-->", stats_chunk);
+                                
+                                // Collect analytics data
+                                let analytics = UsageAnalytics::new(
+                                    analytics_metadata.0.clone(), // tenant_id
+                                    analytics_metadata.1.clone(), // module_id  
+                                    analytics_metadata.2.clone(), // session_id
+                                    analytics_metadata.3.clone(), // request_id
+                                    analytics_metadata.4.clone(), // ip_address
+                                    analytics_metadata.5.clone(), // country
+                                    stats_chunk.model.to_string(),
+                                    stats_chunk.usage.prompt_tokens,
+                                    stats_chunk.usage.completion_tokens,
+                                    stats_chunk.usage.total_tokens,
+                                );
+                                
+                                // Save analytics data asynchronously (fire-and-forget)
+                                let env_clone = analytics_metadata.6.clone();
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    analytics.save(&env_clone).await;
+                                });
                             }
                             Err(e) => {
                                 console_error!("B: Failed to parse choices chunk: <!--\n{choices_str}\n-->\nError: {e}");
@@ -259,6 +298,26 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                         match serde_json::from_str::<StatsChunk>(choices_str) {
                             Ok(stats_chunk) => {
                                 console_log!("STATS CHUNK B: <!--\n{:?}\n-->", stats_chunk);
+                                
+                                // Collect analytics data
+                                let analytics = UsageAnalytics::new(
+                                    analytics_metadata.0.clone(), // tenant_id
+                                    analytics_metadata.1.clone(), // module_id  
+                                    analytics_metadata.2.clone(), // session_id
+                                    analytics_metadata.3.clone(), // request_id
+                                    analytics_metadata.4.clone(), // ip_address
+                                    analytics_metadata.5.clone(), // country
+                                    stats_chunk.model.to_string(),
+                                    stats_chunk.usage.prompt_tokens,
+                                    stats_chunk.usage.completion_tokens,
+                                    stats_chunk.usage.total_tokens,
+                                );
+                                
+                                // Save analytics data asynchronously (fire-and-forget)
+                                let env_clone = analytics_metadata.6.clone();
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    analytics.save(&env_clone).await;
+                                });
                             }
                             Err(e) => {
                                 console_error!("A: Failed to parse choices chunk:\nError: {:?}", e);
