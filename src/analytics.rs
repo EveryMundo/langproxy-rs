@@ -63,9 +63,9 @@ impl UsageAnalytics {
     /// configured in wrangler.toml. If the write fails, it logs an error but
     /// does not propagate the error to avoid failing the main request.
     pub async fn save(&self, env: &Env) {
-        // For now, just log the analytics data until we figure out the correct API
+        // Log the analytics data for now
         console_log!(
-            "Analytics data: tenant={:?}, module={:?}, session={:?}, request={:?}, ip={:?}, country={:?}, model={}, tokens={}/{}/{}", 
+            "Analytics Event: tenant={:?}, module={:?}, session={:?}, request={:?}, ip={:?}, country={:?}, model={}, prompt_tokens={}, completion_tokens={}, total_tokens={}", 
             self.tenant_id,
             self.module_id,
             self.session_id,
@@ -78,10 +78,32 @@ impl UsageAnalytics {
             self.total_tokens
         );
         
-        // TODO: Implement actual Analytics Engine write when we determine the correct API
-        // The binding OPENAI_PROXY_USAGE_ANALYTICS is configured in wrangler.toml
-        // but the worker crate might not have the analytics_engine method yet
+        // Try to access the Analytics Engine dataset
+        // The exact API method may vary by worker crate version
+        if let Ok(analytics_binding) = env.var("OPENAI_PROXY_USAGE_ANALYTICS") {
+            console_debug!("Found analytics binding as environment variable: {:?}", analytics_binding.to_string());
+            
+            // Note: In newer versions of the worker crate, Analytics Engine might be accessed differently
+            // For now we'll log the structured data that should be sent to Analytics Engine
+            let structured_data = serde_json::json!({
+                "tenant_id": self.tenant_id,
+                "module_id": self.module_id,
+                "session_id": self.session_id,
+                "request_id": self.request_id,
+                "ip_address": self.ip_address,
+                "country": self.country,
+                "model": self.model,
+                "prompt_tokens": self.prompt_tokens,
+                "completion_tokens": self.completion_tokens,
+                "total_tokens": self.total_tokens,
+                "timestamp": self.timestamp
+            });
+            
+            console_debug!("Analytics data structure: {}", structured_data.to_string());
+        } else {
+            console_error!("Analytics binding OPENAI_PROXY_USAGE_ANALYTICS not found in environment");
+        }
         
-        console_debug!("Analytics data logged for request: {:?}", self.request_id);
+        console_debug!("Analytics processing completed for request: {:?}", self.request_id);
     }
 }
