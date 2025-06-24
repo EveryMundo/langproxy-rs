@@ -323,4 +323,186 @@ mod tests {
         assert_eq!(analytics.total_tokens, 0);
         assert_eq!(analytics.timestamp, 1640995200000.0);
     }
+
+    #[test]
+    fn test_usage_analytics_new_creates_timestamp() {
+        let analytics = UsageAnalytics::new(
+            "test-app".to_string(),
+            Some("test-tenant".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "test-model".to_string(),
+            10,
+            20,
+            30,
+        );
+
+        // In test environment, current_timestamp() returns a fixed value
+        assert_eq!(analytics.timestamp, 1640995200000.0);
+        assert_eq!(analytics.app_id, "test-app");
+        assert_eq!(analytics.model, "test-model");
+        assert_eq!(analytics.prompt_tokens, 10);
+        assert_eq!(analytics.completion_tokens, 20);
+        assert_eq!(analytics.total_tokens, 30);
+    }
+
+    #[test]
+    fn test_usage_analytics_deserialization() {
+        let json_str = r#"{
+            "app_id": "test-app",
+            "tenant_id": "test-tenant", 
+            "module_id": null,
+            "session_id": "session123",
+            "request_id": "req456",
+            "env_id": "prod",
+            "ip_address": "192.168.1.1",
+            "country": "US",
+            "cf_ray": "ray123",
+            "domain": "api.example.com",
+            "deployment": "cloudflare",
+            "model": "gpt-4",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "timestamp": 1640995200000.0
+        }"#;
+        
+        let analytics: UsageAnalytics = serde_json::from_str(json_str).unwrap();
+        assert_eq!(analytics.app_id, "test-app");
+        assert_eq!(analytics.tenant_id, Some("test-tenant".to_string()));
+        assert_eq!(analytics.module_id, None);
+        assert_eq!(analytics.session_id, Some("session123".to_string()));
+        assert_eq!(analytics.request_id, Some("req456".to_string()));
+        assert_eq!(analytics.env_id, Some("prod".to_string()));
+        assert_eq!(analytics.ip_address, Some("192.168.1.1".to_string()));
+        assert_eq!(analytics.country, Some("US".to_string()));
+        assert_eq!(analytics.cf_ray, Some("ray123".to_string()));
+        assert_eq!(analytics.domain, Some("api.example.com".to_string()));
+        assert_eq!(analytics.deployment, Some("cloudflare".to_string()));
+        assert_eq!(analytics.model, "gpt-4");
+        assert_eq!(analytics.prompt_tokens, 100);
+        assert_eq!(analytics.completion_tokens, 50);
+        assert_eq!(analytics.total_tokens, 150);
+        assert_eq!(analytics.timestamp, 1640995200000.0);
+    }
+
+    #[test]
+    fn test_usage_analytics_serialization_with_all_fields() {
+        let analytics = UsageAnalytics::new_with_timestamp(
+            "full-test-app".to_string(),
+            Some("full-tenant".to_string()),
+            Some("full-module".to_string()),
+            Some("full-session".to_string()),
+            Some("full-request".to_string()),
+            Some("full-env".to_string()),
+            Some("10.0.0.1".to_string()),
+            Some("CA".to_string()),
+            Some("full-ray".to_string()),
+            Some("full.domain.com".to_string()),
+            Some("production".to_string()),
+            "gpt-3.5-turbo".to_string(),
+            250,
+            125,
+            375,
+            1640995200000.0,
+        );
+
+        let serialized = serde_json::to_string(&analytics).unwrap();
+        let deserialized: UsageAnalytics = serde_json::from_str(&serialized).unwrap();
+        
+        // Verify round-trip serialization
+        assert_eq!(analytics.app_id, deserialized.app_id);
+        assert_eq!(analytics.tenant_id, deserialized.tenant_id);
+        assert_eq!(analytics.module_id, deserialized.module_id);
+        assert_eq!(analytics.session_id, deserialized.session_id);
+        assert_eq!(analytics.request_id, deserialized.request_id);
+        assert_eq!(analytics.env_id, deserialized.env_id);
+        assert_eq!(analytics.ip_address, deserialized.ip_address);
+        assert_eq!(analytics.country, deserialized.country);
+        assert_eq!(analytics.cf_ray, deserialized.cf_ray);
+        assert_eq!(analytics.domain, deserialized.domain);
+        assert_eq!(analytics.deployment, deserialized.deployment);
+        assert_eq!(analytics.model, deserialized.model);
+        assert_eq!(analytics.prompt_tokens, deserialized.prompt_tokens);
+        assert_eq!(analytics.completion_tokens, deserialized.completion_tokens);
+        assert_eq!(analytics.total_tokens, deserialized.total_tokens);
+        assert_eq!(analytics.timestamp, deserialized.timestamp);
+    }
+
+    #[test]
+    fn test_usage_analytics_large_token_counts() {
+        let analytics = UsageAnalytics::new_with_timestamp(
+            "large-usage-app".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "gpt-4".to_string(),
+            u32::MAX - 1000, // Large but valid prompt tokens
+            u32::MAX - 2000, // Large but valid completion tokens  
+            u32::MAX - 500,  // Large but valid total tokens
+            1640995200000.0,
+        );
+
+        assert_eq!(analytics.prompt_tokens, u32::MAX - 1000);
+        assert_eq!(analytics.completion_tokens, u32::MAX - 2000);
+        assert_eq!(analytics.total_tokens, u32::MAX - 500);
+        
+        // Verify it can be serialized and deserialized
+        let serialized = serde_json::to_string(&analytics).unwrap();
+        let deserialized: UsageAnalytics = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(analytics.prompt_tokens, deserialized.prompt_tokens);
+        assert_eq!(analytics.completion_tokens, deserialized.completion_tokens);
+        assert_eq!(analytics.total_tokens, deserialized.total_tokens);
+    }
+
+    #[test]
+    fn test_usage_analytics_edge_case_strings() {
+        // Test with empty strings and special characters
+        let analytics = UsageAnalytics::new_with_timestamp(
+            "".to_string(), // Empty app_id
+            Some("tenant with spaces".to_string()),
+            Some("module/with/slashes".to_string()),
+            Some("session-with-dashes".to_string()),
+            Some("request_with_underscores".to_string()),
+            Some("env.with.dots".to_string()),
+            Some("127.0.0.1".to_string()),
+            Some("XX".to_string()), // Invalid country code
+            Some("ray-123-abc".to_string()),
+            Some("sub.domain.example.com".to_string()),
+            Some("staging-v2".to_string()),
+            "claude-3-opus-20240229".to_string(), // Long model name
+            0,
+            0,
+            0,
+            1640995200000.0,
+        );
+
+        // Verify all values are preserved correctly
+        assert_eq!(analytics.app_id, "");
+        assert_eq!(analytics.tenant_id, Some("tenant with spaces".to_string()));
+        assert_eq!(analytics.module_id, Some("module/with/slashes".to_string()));
+        assert_eq!(analytics.session_id, Some("session-with-dashes".to_string()));
+        assert_eq!(analytics.request_id, Some("request_with_underscores".to_string()));
+        assert_eq!(analytics.env_id, Some("env.with.dots".to_string()));
+        assert_eq!(analytics.ip_address, Some("127.0.0.1".to_string()));
+        assert_eq!(analytics.country, Some("XX".to_string()));
+        assert_eq!(analytics.cf_ray, Some("ray-123-abc".to_string()));
+        assert_eq!(analytics.domain, Some("sub.domain.example.com".to_string()));
+        assert_eq!(analytics.deployment, Some("staging-v2".to_string()));
+        assert_eq!(analytics.model, "claude-3-opus-20240229");
+    }
 }

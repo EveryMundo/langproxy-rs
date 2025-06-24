@@ -418,3 +418,302 @@ struct AzurePartialResponseBody {
     pub model: HString<64>,
     pub usage: Usage,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_proxy_url_params_deserialization() {
+        let json_str = r#"{
+            "app": "test-app",
+            "u": "https://api.openai.com/v1/chat/completions",
+            "envId": "prod",
+            "tenId": "tenant123",
+            "modId": "module456",
+            "sesId": "session789",
+            "reqId": "request101",
+            "api-version": "2023-05-15"
+        }"#;
+        
+        let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
+        assert_eq!(params.app, "test-app");
+        assert_eq!(params.u, "https://api.openai.com/v1/chat/completions");
+        assert_eq!(params.env_id, Some("prod".to_string()));
+        assert_eq!(params.ten_id, Some("tenant123".to_string()));
+        assert_eq!(params.mod_id, Some("module456".to_string()));
+        assert_eq!(params.ses_id, Some("session789".to_string()));
+        assert_eq!(params.req_id, Some("request101".to_string()));
+        assert_eq!(params.api_version, Some("2023-05-15".to_string()));
+    }
+
+    #[test]
+    fn test_proxy_url_params_minimal() {
+        let json_str = r#"{
+            "app": "minimal-app",
+            "u": "https://test.example.com"
+        }"#;
+        
+        let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
+        assert_eq!(params.app, "minimal-app");
+        assert_eq!(params.u, "https://test.example.com");
+        assert_eq!(params.env_id, None);
+        assert_eq!(params.ten_id, None);
+        assert_eq!(params.mod_id, None);
+        assert_eq!(params.ses_id, None);
+        assert_eq!(params.req_id, None);
+        assert_eq!(params.api_version, None);
+    }
+
+    #[test]
+    fn test_azure_req_body_stream_defaults() {
+        let json_str = r#"{}"#;
+        let body: AzureReqBodyStream = serde_json::from_str(json_str).unwrap();
+        assert_eq!(body.stream, false); // default value
+    }
+
+    #[test]
+    fn test_azure_req_body_stream_explicit() {
+        let json_str = r#"{"stream": true}"#;
+        let body: AzureReqBodyStream = serde_json::from_str(json_str).unwrap();
+        assert_eq!(body.stream, true);
+        
+        let json_str = r#"{"stream": false}"#;
+        let body: AzureReqBodyStream = serde_json::from_str(json_str).unwrap();
+        assert_eq!(body.stream, false);
+    }
+
+    #[test]
+    fn test_usage_deserialization() {
+        let json_str = r#"{
+            "prompt_tokens": 150,
+            "completion_tokens": 75,
+            "total_tokens": 225
+        }"#;
+        
+        let usage: Usage = serde_json::from_str(json_str).unwrap();
+        assert_eq!(usage.prompt_tokens, 150);
+        assert_eq!(usage.completion_tokens, 75);
+        assert_eq!(usage.total_tokens, 225);
+    }
+
+    #[test]
+    fn test_usage_with_default_completion_tokens() {
+        let json_str = r#"{
+            "prompt_tokens": 100,
+            "total_tokens": 100
+        }"#;
+        
+        let usage: Usage = serde_json::from_str(json_str).unwrap();
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 0); // default value
+        assert_eq!(usage.total_tokens, 100);
+    }
+
+    #[test]
+    fn test_stats_chunk_deserialization() {
+        let json_str = r#"{
+            "model": "gpt-4",
+            "usage": {
+                "prompt_tokens": 200,
+                "completion_tokens": 100,
+                "total_tokens": 300
+            }
+        }"#;
+        
+        let stats: StatsChunk = serde_json::from_str(json_str).unwrap();
+        assert_eq!(stats.model.as_str(), "gpt-4");
+        assert_eq!(stats.usage.prompt_tokens, 200);
+        assert_eq!(stats.usage.completion_tokens, 100);
+        assert_eq!(stats.usage.total_tokens, 300);
+    }
+
+    #[test]
+    fn test_azure_partial_response_body_deserialization() {
+        let json_str = r#"{
+            "id": "chatcmpl-123",
+            "created": 1640995200,
+            "model": "gpt-3.5-turbo",
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": 25,
+                "total_tokens": 75
+            }
+        }"#;
+        
+        let response: AzurePartialResponseBody = serde_json::from_str(json_str).unwrap();
+        assert_eq!(response.id.as_str(), "chatcmpl-123");
+        assert_eq!(response.created, 1640995200);
+        assert_eq!(response.model.as_str(), "gpt-3.5-turbo");
+        assert_eq!(response.usage.prompt_tokens, 50);
+        assert_eq!(response.usage.completion_tokens, 25);
+        assert_eq!(response.usage.total_tokens, 75);
+    }
+
+    #[test]
+    fn test_json_parsing_error_handling() {
+        // Test invalid JSON for ProxyUrlParams
+        let invalid_json = r#"{"app": "test"}"#; // missing required 'u' field
+        let result = serde_json::from_str::<ProxyUrlParams>(invalid_json);
+        assert!(result.is_err());
+
+        // Test invalid JSON for Usage
+        let invalid_usage = r#"{"prompt_tokens": "not_a_number"}"#;
+        let result = serde_json::from_str::<Usage>(invalid_usage);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_heapless_string_limits() {
+        // Test that HString<64> can handle strings up to 64 characters
+        let long_model_name = "a".repeat(64);
+        let json_str = format!(r#"{{"model": "{}", "usage": {{"prompt_tokens": 10, "total_tokens": 10}}}}"#, long_model_name);
+        
+        let stats = serde_json::from_str::<StatsChunk>(&json_str);
+        assert!(stats.is_ok());
+        
+        // Test that strings longer than 64 characters should fail
+        let too_long_model_name = "a".repeat(65);
+        let json_str = format!(r#"{{"model": "{}", "usage": {{"prompt_tokens": 10, "total_tokens": 10}}}}"#, too_long_model_name);
+        
+        let stats = serde_json::from_str::<StatsChunk>(&json_str);
+        assert!(stats.is_err());
+    }
+
+    #[test]
+    fn test_complex_proxy_url_params_scenarios() {
+        // Test with special characters in URL
+        let json_str = r#"{
+            "app": "test-app",
+            "u": "https://api.openai.com/v1/chat/completions?model=gpt-4&stream=true",
+            "envId": "prod-2024",
+            "tenId": "tenant_123"
+        }"#;
+        
+        let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
+        assert_eq!(params.app, "test-app");
+        assert_eq!(params.u, "https://api.openai.com/v1/chat/completions?model=gpt-4&stream=true");
+        assert_eq!(params.env_id, Some("prod-2024".to_string()));
+        assert_eq!(params.ten_id, Some("tenant_123".to_string()));
+    }
+
+    #[test]  
+    fn test_azure_req_body_with_extra_fields() {
+        // Test that extra fields in JSON are ignored
+        let json_str = r#"{
+            "stream": true,
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "temperature": 0.7,
+            "extra_field": "ignored"
+        }"#;
+        
+        let body: AzureReqBodyStream = serde_json::from_str(json_str).unwrap();
+        assert_eq!(body.stream, true);
+    }
+
+    #[test]
+    fn test_usage_zero_values() {
+        let json_str = r#"{
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        }"#;
+        
+        let usage: Usage = serde_json::from_str(json_str).unwrap();
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn test_stats_chunk_with_minimal_model_name() {
+        let json_str = r#"{
+            "model": "a",
+            "usage": {
+                "prompt_tokens": 1,
+                "total_tokens": 1
+            }
+        }"#;
+        
+        let stats: StatsChunk = serde_json::from_str(json_str).unwrap();
+        assert_eq!(stats.model.as_str(), "a");
+        assert_eq!(stats.usage.prompt_tokens, 1);
+        assert_eq!(stats.usage.completion_tokens, 0); // default
+        assert_eq!(stats.usage.total_tokens, 1);
+    }
+
+    #[test]
+    fn test_azure_partial_response_edge_cases() {
+        // Test with minimal valid values
+        let json_str = r#"{
+            "id": "1",
+            "created": 0,
+            "model": "m",
+            "usage": {
+                "prompt_tokens": 1,
+                "total_tokens": 1
+            }
+        }"#;
+        
+        let response: AzurePartialResponseBody = serde_json::from_str(json_str).unwrap();
+        assert_eq!(response.id.as_str(), "1");
+        assert_eq!(response.created, 0);
+        assert_eq!(response.model.as_str(), "m");
+        assert_eq!(response.usage.prompt_tokens, 1);
+        assert_eq!(response.usage.completion_tokens, 0);
+        assert_eq!(response.usage.total_tokens, 1);
+    }
+
+    #[test] 
+    fn test_malformed_json_handling() {
+        // Test various malformed JSON strings
+        let malformed_cases = vec![
+            r#"{"app": "test""#, // Unclosed JSON
+            r#"{"app": test, "u": "url"}"#, // Unquoted string
+            r#"{"app": "test", "u": null}"#, // Null for required string field
+            r#"{}"#, // Missing required fields
+        ];
+
+        for json_str in malformed_cases {
+            let result = serde_json::from_str::<ProxyUrlParams>(json_str);
+            assert!(result.is_err(), "Expected error for malformed JSON: {}", json_str);
+        }
+    }
+
+    #[test]
+    fn test_large_numeric_values() {
+        // Test with maximum u32 values
+        let json_str = format!(r#"{{
+            "prompt_tokens": {},
+            "completion_tokens": {},
+            "total_tokens": {}
+        }}"#, u32::MAX, u32::MAX, u32::MAX);
+        
+        let usage: Usage = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(usage.prompt_tokens, u32::MAX);
+        assert_eq!(usage.completion_tokens, u32::MAX);
+        assert_eq!(usage.total_tokens, u32::MAX);
+    }
+
+    #[test]
+    fn test_proxy_params_camel_case_conversion() {
+        // Test that camelCase field names are properly converted
+        let json_str = r#"{
+            "app": "test",
+            "u": "url",
+            "envId": "env1",
+            "tenId": "ten1", 
+            "modId": "mod1",
+            "sesId": "ses1",
+            "reqId": "req1"
+        }"#;
+        
+        let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
+        assert_eq!(params.env_id, Some("env1".to_string()));
+        assert_eq!(params.ten_id, Some("ten1".to_string()));
+        assert_eq!(params.mod_id, Some("mod1".to_string()));
+        assert_eq!(params.ses_id, Some("ses1".to_string()));
+        assert_eq!(params.req_id, Some("req1".to_string()));
+    }
+}
