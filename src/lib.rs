@@ -4,8 +4,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 // use hashbrown::HashMap;
-use heapless::String as HString;
 use futures_util::StreamExt;
+use heapless::String as HString;
 
 use worker::*;
 
@@ -14,7 +14,6 @@ use analytics::UsageAnalytics;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-
     // Create an instance of the Router, which can use parameters (/user/:name) or wildcard values
     // (/file/*pathname). Alternatively, use `Router::with_data(D)` and pass in arbitrary data for
     // routes to access and share using the `ctx.data()` method.
@@ -69,10 +68,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         })
         .post_async("/proxy/universal", stream_proxy)
         .post_async("/azure-openai/completions", stream_proxy)
-        .run(req, env).await
+        .run(req, env)
+        .await
 }
 
-async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Response> {
+async fn stream_proxy(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let data = req.bytes().await?;
 
     // Extract metadata for analytics
@@ -109,8 +109,9 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
     let data = match serde_json::from_slice::<AzureReqBodyStream>(&data) {
         Ok(stream_params) => {
             console_debug!("Stream Params: {stream_params:?}");
-            if stream_params.stream == false { data }
-            else {
+            if stream_params.stream == false {
+                data
+            } else {
                 match std::str::from_utf8(&data) {
                     Ok(s) => {
                         #[cfg(debug_assertions)]
@@ -119,12 +120,18 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                         // {"stream_options":{"include_usage": true}
                         // let trimmed = s.trim();
                         // let concat = format!("{}{}", &trimmed[..(trimmed.len() - 1)], r#","stream_options":{"include_usage": true}}"#);
-                        let concat = format!("{}{}", r#"{"stream_options":{"include_usage": true},"#, &s.trim()[1..]);
+                        let concat = format!(
+                            "{}{}",
+                            r#"{"stream_options":{"include_usage": true},"#,
+                            &s.trim()[1..]
+                        );
                         #[cfg(debug_assertions)]
                         console_error!("CONCAT: {concat}");
                         // #[cfg(debug_assertions)]
                         match serde_json::from_str::<serde_json::Value>(&concat) {
-                            Ok(_) => { console_log!("Parsed Ok!"); }
+                            Ok(_) => {
+                                console_log!("Parsed Ok!");
+                            }
                             Err(e) => {
                                 console_error!("Invalid JSON: {}", e);
 
@@ -138,15 +145,16 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                         console_error!("Invalid UTF-8: {}", e);
                         return Response::error("Invalid UTF-8", 400);
                     }
-                }.as_str().into()
+                }
+                .as_str()
+                .into()
             }
-        },
+        }
         Err(e) => {
             console_error!("JSON Error: {}", e.to_string());
             return Response::error("Internal Server Error!!", 500);
         }
     };
-
 
     let proxy_headers = {
         static API_KEY_STR: &str = "api-key";
@@ -161,11 +169,12 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                 _ => {
                     console_error!("Request Error: Missing authorization headers");
                     return Response::error("Internal Server Error!!!", 500);
-                },
-            }
+                }
+            },
         };
 
-        proxy_headers.set(header_name, &header_value)
+        proxy_headers
+            .set(header_name, &header_value)
             .expect("Should set a header value");
 
         proxy_headers
@@ -176,36 +185,41 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
     console_debug!("Proxy URL: {proxy_url}");
 
     let reqwester = reqwest::Client::new();
-    let response = match reqwester.post(proxy_url)
+    let response = match reqwester
+        .post(proxy_url)
         .headers(proxy_headers.into())
         .body(data)
         .send()
-        .await {
-            Ok(res) => res,
-            Err(e) => {
-                console_error!("Request Error: {}", e.to_string());
-                return Response::error("Internal Server Error!!!!", 500);
-            }
-        };
+        .await
+    {
+        Ok(res) => res,
+        Err(e) => {
+            console_error!("Request Error: {}", e.to_string());
+            return Response::error("Internal Server Error!!!!", 500);
+        }
+    };
 
     if response.status().is_success() {
         let mut my_response_headers = Headers::new();
 
         for (header_name, header_value) in response.headers() {
             if let Ok(value_str) = header_value.to_str() {
-                my_response_headers.append(header_name.as_str(), value_str)
+                my_response_headers
+                    .append(header_name.as_str(), value_str)
                     .expect("Should set response header");
             }
         }
 
         // Set content type to match what's expected for streaming responses
         if !my_response_headers.has("content-type").unwrap_or(false) {
-            my_response_headers.set("content-type", "text/event-stream")
+            my_response_headers
+                .set("content-type", "text/event-stream")
                 .expect("Should set content-type header");
         }
 
         // Add CORS headers if needed
-        my_response_headers.set("Access-Control-Allow-Origin", "*")
+        my_response_headers
+            .set("Access-Control-Allow-Origin", "*")
             .expect("Should set CORS header");
 
         // Create a streaming response
@@ -239,12 +253,12 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
 
         // let mut temp_str: heapless::String<512> = heapless::String::new();
         let mut temp_str = String::new();
-        
+
         // Capture analytics metadata for use in the stream closure
         let analytics_metadata = (
             xparams.app.clone(),
             xparams.ten_id.clone(),
-            xparams.mod_id.clone(), 
+            xparams.mod_id.clone(),
             xparams.ses_id.clone(),
             xparams.req_id.clone(),
             xparams.env_id.clone(),
@@ -255,7 +269,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
             deployment.clone(),
             env.clone(),
         );
-        
+
         // Create a ReadableStream from our channel receiver
         let stream = rx.map(move |result| {
             match result {
@@ -273,7 +287,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                         match serde_json::from_str::<StatsChunk>(choices_str) {
                             Ok(stats_chunk) => {
                                 console_log!("STATS CHUNK A: <!--\n{:?}\n-->", stats_chunk);
-                                
+
                                 // Collect analytics data
                                 let analytics = UsageAnalytics::new(
                                     analytics_metadata.0.clone(), // app_id
@@ -315,7 +329,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
                         match serde_json::from_str::<StatsChunk>(choices_str) {
                             Ok(stats_chunk) => {
                                 console_log!("STATS CHUNK B: <!--\n{:?}\n-->", stats_chunk);
-                                
+
                                 // Collect analytics data
                                 let analytics = UsageAnalytics::new(
                                     analytics_metadata.0.clone(), // app_id
@@ -373,7 +387,7 @@ async fn stream_proxy (mut req: Request, ctx: RouteContext<()>) -> Result <Respo
     } else {
         console_error!("Error {}", response.status());
         let status = response.status();
-        let text= &response.text().await;
+        let text = &response.text().await;
         Response::error(format!("{:?}", &text), status.into())
     }
 }
@@ -435,7 +449,7 @@ mod tests {
             "reqId": "request101",
             "api-version": "2023-05-15"
         }"#;
-        
+
         let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
         assert_eq!(params.app, "test-app");
         assert_eq!(params.u, "https://api.openai.com/v1/chat/completions");
@@ -453,7 +467,7 @@ mod tests {
             "app": "minimal-app",
             "u": "https://test.example.com"
         }"#;
-        
+
         let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
         assert_eq!(params.app, "minimal-app");
         assert_eq!(params.u, "https://test.example.com");
@@ -477,7 +491,7 @@ mod tests {
         let json_str = r#"{"stream": true}"#;
         let body: AzureReqBodyStream = serde_json::from_str(json_str).unwrap();
         assert_eq!(body.stream, true);
-        
+
         let json_str = r#"{"stream": false}"#;
         let body: AzureReqBodyStream = serde_json::from_str(json_str).unwrap();
         assert_eq!(body.stream, false);
@@ -490,7 +504,7 @@ mod tests {
             "completion_tokens": 75,
             "total_tokens": 225
         }"#;
-        
+
         let usage: Usage = serde_json::from_str(json_str).unwrap();
         assert_eq!(usage.prompt_tokens, 150);
         assert_eq!(usage.completion_tokens, 75);
@@ -503,7 +517,7 @@ mod tests {
             "prompt_tokens": 100,
             "total_tokens": 100
         }"#;
-        
+
         let usage: Usage = serde_json::from_str(json_str).unwrap();
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.completion_tokens, 0); // default value
@@ -520,7 +534,7 @@ mod tests {
                 "total_tokens": 300
             }
         }"#;
-        
+
         let stats: StatsChunk = serde_json::from_str(json_str).unwrap();
         assert_eq!(stats.model.as_str(), "gpt-4");
         assert_eq!(stats.usage.prompt_tokens, 200);
@@ -540,7 +554,7 @@ mod tests {
                 "total_tokens": 75
             }
         }"#;
-        
+
         let response: AzurePartialResponseBody = serde_json::from_str(json_str).unwrap();
         assert_eq!(response.id.as_str(), "chatcmpl-123");
         assert_eq!(response.created, 1640995200);
@@ -567,15 +581,21 @@ mod tests {
     fn test_heapless_string_limits() {
         // Test that HString<64> can handle strings up to 64 characters
         let long_model_name = "a".repeat(64);
-        let json_str = format!(r#"{{"model": "{}", "usage": {{"prompt_tokens": 10, "total_tokens": 10}}}}"#, long_model_name);
-        
+        let json_str = format!(
+            r#"{{"model": "{}", "usage": {{"prompt_tokens": 10, "total_tokens": 10}}}}"#,
+            long_model_name
+        );
+
         let stats = serde_json::from_str::<StatsChunk>(&json_str);
         assert!(stats.is_ok());
-        
+
         // Test that strings longer than 64 characters should fail
         let too_long_model_name = "a".repeat(65);
-        let json_str = format!(r#"{{"model": "{}", "usage": {{"prompt_tokens": 10, "total_tokens": 10}}}}"#, too_long_model_name);
-        
+        let json_str = format!(
+            r#"{{"model": "{}", "usage": {{"prompt_tokens": 10, "total_tokens": 10}}}}"#,
+            too_long_model_name
+        );
+
         let stats = serde_json::from_str::<StatsChunk>(&json_str);
         assert!(stats.is_err());
     }
@@ -589,15 +609,18 @@ mod tests {
             "envId": "prod-2024",
             "tenId": "tenant_123"
         }"#;
-        
+
         let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
         assert_eq!(params.app, "test-app");
-        assert_eq!(params.u, "https://api.openai.com/v1/chat/completions?model=gpt-4&stream=true");
+        assert_eq!(
+            params.u,
+            "https://api.openai.com/v1/chat/completions?model=gpt-4&stream=true"
+        );
         assert_eq!(params.env_id, Some("prod-2024".to_string()));
         assert_eq!(params.ten_id, Some("tenant_123".to_string()));
     }
 
-    #[test]  
+    #[test]
     fn test_azure_req_body_with_extra_fields() {
         // Test that extra fields in JSON are ignored
         let json_str = r#"{
@@ -607,7 +630,7 @@ mod tests {
             "temperature": 0.7,
             "extra_field": "ignored"
         }"#;
-        
+
         let body: AzureReqBodyStream = serde_json::from_str(json_str).unwrap();
         assert_eq!(body.stream, true);
     }
@@ -619,7 +642,7 @@ mod tests {
             "completion_tokens": 0,
             "total_tokens": 0
         }"#;
-        
+
         let usage: Usage = serde_json::from_str(json_str).unwrap();
         assert_eq!(usage.prompt_tokens, 0);
         assert_eq!(usage.completion_tokens, 0);
@@ -635,7 +658,7 @@ mod tests {
                 "total_tokens": 1
             }
         }"#;
-        
+
         let stats: StatsChunk = serde_json::from_str(json_str).unwrap();
         assert_eq!(stats.model.as_str(), "a");
         assert_eq!(stats.usage.prompt_tokens, 1);
@@ -655,7 +678,7 @@ mod tests {
                 "total_tokens": 1
             }
         }"#;
-        
+
         let response: AzurePartialResponseBody = serde_json::from_str(json_str).unwrap();
         assert_eq!(response.id.as_str(), "1");
         assert_eq!(response.created, 0);
@@ -665,31 +688,40 @@ mod tests {
         assert_eq!(response.usage.total_tokens, 1);
     }
 
-    #[test] 
+    #[test]
     fn test_malformed_json_handling() {
         // Test various malformed JSON strings
         let malformed_cases = vec![
-            r#"{"app": "test""#, // Unclosed JSON
-            r#"{"app": test, "u": "url"}"#, // Unquoted string
+            r#"{"app": "test""#,             // Unclosed JSON
+            r#"{"app": test, "u": "url"}"#,  // Unquoted string
             r#"{"app": "test", "u": null}"#, // Null for required string field
-            r#"{}"#, // Missing required fields
+            r#"{}"#,                         // Missing required fields
         ];
 
         for json_str in malformed_cases {
             let result = serde_json::from_str::<ProxyUrlParams>(json_str);
-            assert!(result.is_err(), "Expected error for malformed JSON: {}", json_str);
+            assert!(
+                result.is_err(),
+                "Expected error for malformed JSON: {}",
+                json_str
+            );
         }
     }
 
     #[test]
     fn test_large_numeric_values() {
         // Test with maximum u32 values
-        let json_str = format!(r#"{{
+        let json_str = format!(
+            r#"{{
             "prompt_tokens": {},
             "completion_tokens": {},
             "total_tokens": {}
-        }}"#, u32::MAX, u32::MAX, u32::MAX);
-        
+        }}"#,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX
+        );
+
         let usage: Usage = serde_json::from_str(&json_str).unwrap();
         assert_eq!(usage.prompt_tokens, u32::MAX);
         assert_eq!(usage.completion_tokens, u32::MAX);
@@ -708,7 +740,7 @@ mod tests {
             "sesId": "ses1",
             "reqId": "req1"
         }"#;
-        
+
         let params: ProxyUrlParams = serde_json::from_str(json_str).unwrap();
         assert_eq!(params.env_id, Some("env1".to_string()));
         assert_eq!(params.ten_id, Some("ten1".to_string()));

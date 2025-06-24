@@ -43,7 +43,7 @@ impl UsageAnalytics {
     pub fn new(
         app_id: String,
         tenant_id: Option<String>,
-        module_id: Option<String>, 
+        module_id: Option<String>,
         session_id: Option<String>,
         request_id: Option<String>,
         env_id: Option<String>,
@@ -76,7 +76,7 @@ impl UsageAnalytics {
             timestamp: Self::current_timestamp(),
         }
     }
-    
+
     /// Creates a timestamp for the current time
     /// In WASM context uses Date::now(), for testing uses a fixed value
     fn current_timestamp() -> f64 {
@@ -95,7 +95,7 @@ impl UsageAnalytics {
     pub fn new_with_timestamp(
         app_id: String,
         tenant_id: Option<String>,
-        module_id: Option<String>, 
+        module_id: Option<String>,
         session_id: Option<String>,
         request_id: Option<String>,
         env_id: Option<String>,
@@ -131,7 +131,7 @@ impl UsageAnalytics {
     }
 
     /// Saves the analytics data to CloudFlare Analytics Engine
-    /// 
+    ///
     /// This method writes usage data to the OPENAI_PROXY_USAGE_ANALYTICS dataset
     /// configured in wrangler.toml. If the write fails, it logs an error but
     /// does not propagate the error to avoid failing the main request.
@@ -155,7 +155,7 @@ impl UsageAnalytics {
             self.completion_tokens,
             self.total_tokens
         );
-        
+
         // Prepare data for Analytics Engine
         // CloudFlare Analytics Engine expects structured data with blobs, doubles, and indexes
         // Following the original JavaScript implementation order
@@ -183,28 +183,31 @@ impl UsageAnalytics {
                 format!("{}:{}", self.tenant_id.as_deref().unwrap_or("unknown"), &self.app_id)
             ]
         });
-        
+
         // Try different ways to access Analytics Engine based on worker crate version
         // Method 1: Try env.analytics_engine() if available in newer versions
-        
+
         // Method 2: Try direct binding access (this may work in some versions)
         if let Ok(binding) = env.var("OPENAI_PROXY_USAGE_ANALYTICS") {
             console_debug!("Found analytics binding: {}", binding.to_string());
             // TODO: When the correct Analytics Engine API is available, use:
             // dataset.write_data_point(data_point).await
         }
-        
+
         // Method 3: Log structured data for external processing/debugging
         console_debug!("Analytics data point structure: {}", data_point.to_string());
-        
+
         // Note: The actual Analytics Engine write call will be:
         // if let Ok(dataset) = env.analytics_engine("OPENAI_PROXY_USAGE_ANALYTICS") {
         //     if let Err(e) = dataset.write_data_point(data_point).await {
         //         console_error!("Failed to write analytics data: {}", e);
         //     }
         // }
-        
-        console_debug!("Analytics processing completed for request: {:?}", self.request_id);
+
+        console_debug!(
+            "Analytics processing completed for request: {:?}",
+            self.request_id
+        );
     }
 }
 
@@ -227,9 +230,9 @@ mod tests {
             Some("example.com".to_string()),
             Some("prod".to_string()),
             "gpt-4".to_string(),
-            100, // prompt_tokens
-            50,  // completion_tokens
-            150, // total_tokens
+            100,             // prompt_tokens
+            50,              // completion_tokens
+            150,             // total_tokens
             1640995200000.0, // Fixed timestamp
         );
 
@@ -274,7 +277,7 @@ mod tests {
 
         let serialized = serde_json::to_string(&analytics);
         assert!(serialized.is_ok());
-        
+
         let json_str = serialized.unwrap();
         assert!(json_str.contains("test_app"));
         assert!(json_str.contains("test_tenant"));
@@ -373,7 +376,7 @@ mod tests {
             "total_tokens": 150,
             "timestamp": 1640995200000.0
         }"#;
-        
+
         let analytics: UsageAnalytics = serde_json::from_str(json_str).unwrap();
         assert_eq!(analytics.app_id, "test-app");
         assert_eq!(analytics.tenant_id, Some("test-tenant".to_string()));
@@ -416,7 +419,7 @@ mod tests {
 
         let serialized = serde_json::to_string(&analytics).unwrap();
         let deserialized: UsageAnalytics = serde_json::from_str(&serialized).unwrap();
-        
+
         // Verify round-trip serialization
         assert_eq!(analytics.app_id, deserialized.app_id);
         assert_eq!(analytics.tenant_id, deserialized.tenant_id);
@@ -452,7 +455,7 @@ mod tests {
             None,
             "gpt-4".to_string(),
             u32::MAX - 1000, // Large but valid prompt tokens
-            u32::MAX - 2000, // Large but valid completion tokens  
+            u32::MAX - 2000, // Large but valid completion tokens
             u32::MAX - 500,  // Large but valid total tokens
             1640995200000.0,
         );
@@ -460,7 +463,7 @@ mod tests {
         assert_eq!(analytics.prompt_tokens, u32::MAX - 1000);
         assert_eq!(analytics.completion_tokens, u32::MAX - 2000);
         assert_eq!(analytics.total_tokens, u32::MAX - 500);
-        
+
         // Verify it can be serialized and deserialized
         let serialized = serde_json::to_string(&analytics).unwrap();
         let deserialized: UsageAnalytics = serde_json::from_str(&serialized).unwrap();
@@ -495,8 +498,14 @@ mod tests {
         assert_eq!(analytics.app_id, "");
         assert_eq!(analytics.tenant_id, Some("tenant with spaces".to_string()));
         assert_eq!(analytics.module_id, Some("module/with/slashes".to_string()));
-        assert_eq!(analytics.session_id, Some("session-with-dashes".to_string()));
-        assert_eq!(analytics.request_id, Some("request_with_underscores".to_string()));
+        assert_eq!(
+            analytics.session_id,
+            Some("session-with-dashes".to_string())
+        );
+        assert_eq!(
+            analytics.request_id,
+            Some("request_with_underscores".to_string())
+        );
         assert_eq!(analytics.env_id, Some("env.with.dots".to_string()));
         assert_eq!(analytics.ip_address, Some("127.0.0.1".to_string()));
         assert_eq!(analytics.country, Some("XX".to_string()));
