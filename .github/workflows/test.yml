@@ -1,4 +1,4 @@
-name: Run Tests
+name: Development tests
 
 # Trigger the workflow on push or pull request to develop branch
 on:
